@@ -188,6 +188,26 @@ def scan_predictions(
     return dict(predictions)
 
 
+def find_unexpected_files(
+    ground_truth: list[dict[str, object]],
+    predictions: dict[str, set[str]],
+) -> list[str]:
+    # Find output images that do not exist in ground truth.
+
+    expected_filenames = {
+        str(record["normalized_filename"])
+        for record in ground_truth
+    }
+
+    unexpected_files = [
+        filename
+        for filename in predictions
+        if filename not in expected_filenames
+    ]
+
+    return sorted(unexpected_files)
+
+
 def evaluate(
     ground_truth: list[dict[str, object]],
     predictions: dict[str, set[str]],
@@ -268,6 +288,7 @@ def write_results(
 
 def calculate_summary(
     results: list[dict[str, str]],
+    unexpected_file_count: int,
 ) -> dict[str, str]:
     # Calculate benchmark summary metrics.
 
@@ -304,6 +325,9 @@ def calculate_summary(
         "unmatched_images": str(unmatched),
         "wrong_identity_classifications": str(wrong_identity),
         "partial_or_additional_matches": str(partial_match),
+        "unexpected_output_files": str(
+            unexpected_file_count
+        ),
         "exact_match_accuracy": f"{accuracy:.2%}",
     }
 
@@ -449,6 +473,11 @@ def main() -> None:
             args.output_folder
         )
 
+        unexpected_files = find_unexpected_files(
+            ground_truth,
+            predictions,
+        )
+
         results = evaluate(
             ground_truth,
             predictions,
@@ -459,7 +488,10 @@ def main() -> None:
             args.results,
         )
 
-        summary = calculate_summary(results)
+        summary = calculate_summary(
+            results,
+            len(unexpected_files),
+        )
 
         write_summary(
             summary,
@@ -467,6 +499,24 @@ def main() -> None:
         )
 
         print_summary(results)
+
+        if unexpected_files:
+            print()
+            print("Warning: Unexpected output files found:")
+
+            for filename in unexpected_files:
+                print(f"  - {filename}")
+
+            print(
+                "Clear the Output folder before running "
+                "the benchmark again."
+            )
+        else:
+            print()
+            print(
+                "Output validation passed: "
+                "no unexpected files found."
+            )
 
         print()
         print(
