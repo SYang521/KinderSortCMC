@@ -266,6 +266,82 @@ def write_results(
         writer.writerows(results)
 
 
+def calculate_summary(
+    results: list[dict[str, str]],
+) -> dict[str, str]:
+    # Calculate benchmark summary metrics.
+
+    total = len(results)
+
+    correct = sum(
+        row["result"] == "Correct"
+        for row in results
+    )
+
+    incorrect = total - correct
+
+    unmatched = sum(
+        row["actual"] == "_unmatched"
+        for row in results
+    )
+
+    wrong_identity = sum(
+        row["notes"] == "Wrong identity"
+        for row in results
+    )
+
+    partial_match = sum(
+        row["notes"] == "Partial or additional identity match"
+        for row in results
+    )
+
+    accuracy = correct / total if total else 0.0
+
+    return {
+        "total_images": str(total),
+        "correct_classifications": str(correct),
+        "incorrect_classifications": str(incorrect),
+        "unmatched_images": str(unmatched),
+        "wrong_identity_classifications": str(wrong_identity),
+        "partial_or_additional_matches": str(partial_match),
+        "exact_match_accuracy": f"{accuracy:.2%}",
+    }
+
+
+def write_summary(
+    summary: dict[str, str],
+    summary_csv: Path,
+) -> None:
+    # Export benchmark summary metrics to a CSV file.
+
+    summary_csv.parent.mkdir(
+        parents=True,
+        exist_ok=True,
+    )
+
+    with summary_csv.open(
+        mode="w",
+        newline="",
+        encoding="utf-8-sig",
+    ) as csv_file:
+        writer = csv.writer(csv_file)
+
+        writer.writerow(
+            [
+                "metric",
+                "value",
+            ]
+        )
+
+        for metric, value in summary.items():
+            writer.writerow(
+                [
+                    metric,
+                    value,
+                ]
+            )
+
+
 def print_summary(
     results: list[dict[str, str]],
 ) -> None:
@@ -345,6 +421,16 @@ def build_parser() -> argparse.ArgumentParser:
         ),
     )
 
+    parser.add_argument(
+        "--summary",
+        type=Path,
+        default=Path("benchmark_summary.csv"),
+        help=(
+            "Path for the generated summary CSV. "
+            "Default: benchmark_summary.csv"
+        ),
+    )
+
     return parser
 
 
@@ -373,12 +459,24 @@ def main() -> None:
             args.results,
         )
 
+        summary = calculate_summary(results)
+
+        write_summary(
+            summary,
+            args.summary,
+        )
+
         print_summary(results)
 
         print()
         print(
             "Detailed results saved to: "
             f"{args.results.resolve()}"
+        )
+
+        print(
+            "Summary results saved to: "
+            f"{args.summary.resolve()}"
         )
 
     except (

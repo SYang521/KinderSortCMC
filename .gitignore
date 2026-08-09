@@ -33,3 +33,6 @@ test_output/
 # Private benchmark inputs and generated results
 benchmark/ground_truth.csv
 benchmark/*_evaluation.csv
+
+# Generated benchmark summary files
+benchmark/*_summary.csv
