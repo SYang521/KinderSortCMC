@@ -29,3 +29,7 @@ benchmark_data/
 benchmark_output/
 test_data/
 test_output/
+
+# Private benchmark inputs and generated results
+benchmark/ground_truth.csv
+benchmark/*_evaluation.csv
