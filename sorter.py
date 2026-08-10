@@ -274,10 +274,18 @@ class PhotoSorter:
         if not self._student_encodings:
             return None
 
-        names = list(self._student_encodings.keys())
-        known_encodings = np.array(list(self._student_encodings.values()))
+        names = []
+        known_encodings = []
 
-        distances = face_recognition.face_distance(known_encodings, encoding)
+        for student_name, student_encodings in self._student_encodings.items():
+            names.extend([student_name] * len(student_encodings))
+            known_encodings.extend(student_encodings)
+
+        known_encodings_array = np.array(known_encodings)
+
+        distances = face_recognition.face_distance(
+            known_encodings_array, encoding
+        )
         best_idx = int(np.argmin(distances))
         best_distance = distances[best_idx]
 
