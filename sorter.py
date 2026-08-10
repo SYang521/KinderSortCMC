@@ -49,7 +49,7 @@ class PhotoSorter:
         self.events_folder = events_folder
         self.output_folder = output_folder
         self.logger = logger
-        self._student_encodings: dict[str, np.ndarray] = {}
+        self._student_encodings: dict[str, list[np.ndarray]] = {}
 
     # ------------------------------------------------------------------
     # Reference loading
@@ -123,7 +123,7 @@ class PhotoSorter:
                         student_name,
                     )
 
-                self._student_encodings[student_name] = encodings[0]
+                self._student_encodings.setdefault(student_name, []).append(encodings[0])
                 self.logger.info("Loaded reference for %s", student_name)
 
             except Exception as exc:  # noqa: BLE001
