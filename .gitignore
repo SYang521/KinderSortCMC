@@ -13,3 +13,26 @@ WinInstaller/
 *.exe
 /Issues
 .claude/worktrees/vigorous-hellman/
+
+# Local Python environment
+venv/
+.venv/
+__pycache__/
+*.pyc
+
+# Local Windows dependency files
+*.whl
+requirements-local.txt
+
+# Private benchmark data and outputs
+benchmark_data/
+benchmark_output/
+test_data/
+test_output/
+
+# Private benchmark inputs and generated results
+benchmark/ground_truth.csv
+benchmark/*_evaluation.csv
+
+# Generated benchmark summary files
+benchmark/*_summary.csv

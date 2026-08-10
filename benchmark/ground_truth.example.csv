@@ -1,0 +1,4 @@
+filename,expected_people,category
+sample_001.jpg,person_a,clear_front
+sample_002.jpg,person_b,side_face
+sample_003.jpg,person_a;person_c,group_photo
