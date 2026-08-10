@@ -112,23 +112,31 @@ class PhotoSorter:
                     self.logger.warning(
                         "No face detected in reference photo for %s (%s)",
                         student_name,
-                        ref_path.name,
+                        ref_path.relative_to(self.reference_folder),
                     )
                     no_face_names.append(student_name)
                     continue
 
                 if len(encodings) > 1:
                     self.logger.warning(
-                        "Multiple faces in reference photo for %s — using first face only",
+                        "Multiple faces in reference photo for %s (%s) – using first face only",
                         student_name,
+                        ref_path.relative_to(self.reference_folder),
                     )
 
                 self._student_encodings.setdefault(student_name, []).append(encodings[0])
-                self.logger.info("Loaded reference for %s", student_name)
+                self.logger.info(
+                    "Loaded reference for %s from %s",
+                    student_name,
+                    ref_path.relative_to(self.reference_folder),
+                )
 
             except Exception as exc:  # noqa: BLE001
                 self.logger.error(
-                    "Could not read reference photo %s: %s", ref_path.name, exc
+                    "Could not read reference photo for %s (%s): %s",
+                    student_name,
+                    ref_path.relative_to(self.reference_folder),
+                    exc,
                 )
 
         self.logger.info(
