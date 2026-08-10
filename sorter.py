@@ -55,6 +55,22 @@ class PhotoSorter:
     # Reference loading
     # ------------------------------------------------------------------
 
+    def _collect_reference_images(self) -> list[tuple[str, Path]]:
+        """Collect reference images from legacy files and student folders."""
+        reference_images: list[tuple[str, Path]] = []
+
+        for item in sorted(self.reference_folder.iterdir()):
+            if item.is_file() and is_image_file(item):
+                reference_images.append((item.stem, item))
+                continue
+
+            if item.is_dir():
+                for image_path in sorted(item.iterdir()):
+                    if image_path.is_file() and is_image_file(image_path):
+                        reference_images.append((item.name, image_path))
+
+        return reference_images
+
     def load_references(
         self,
         progress_callback: Callable[[int, int, str], None] | None = None,
@@ -73,18 +89,16 @@ class PhotoSorter:
             Callers should show a warning for each name in this list.
         """
         no_face_names: list[str] = []
-
-        reference_images = sorted(
-            p for p in self.reference_folder.iterdir() if is_image_file(p)
-        )
+        reference_images = self._collect_reference_images()
 
         if not reference_images:
             self.logger.warning("No reference images found in %s", self.reference_folder)
             return no_face_names
 
         total = len(reference_images)
-        for current, ref_path in enumerate(reference_images, start=1):
-            student_name = ref_path.stem
+        for current, (student_name, ref_path) in enumerate(
+            reference_images, start=1
+        ):
             if progress_callback:
                 progress_callback(current, total, student_name)
             try:
