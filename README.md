@@ -143,3 +143,64 @@ Build Windows executable:
 pyinstaller --onefile --windowed --name "KinderSort" main.py
 # Output: dist/KinderSort.exe
 ```
+
+## Multiple Reference Photos per Identity
+
+This enhancement allows each identity to use multiple local reference photos. Different views, lighting conditions, and environments may provide additional face encodings for comparison.
+
+### Supported folder structures
+
+The original single-file structure remains supported for backwards compatibility:
+
+    Reference_Photos/
+      person_001.jpg
+      person_002.jpg
+
+The new folder-based structure supports multiple reference photos for each identity:
+
+    Reference_Photos/
+      person_001/
+        front.jpg
+        side.jpg
+        indoor.jpg
+      person_002/
+        front.jpg
+        side.jpg
+
+Folder names and legacy file names represent identity labels. Anonymous identifiers such as person_001 should be used instead of real student names.
+
+### Recognition workflow
+
+1. KinderSort scans legacy image files and identity folders in the reference directory.
+2. Each valid reference face is converted into a separate face encoding.
+3. All encodings for the same identity are retained rather than overwritten.
+4. A detected event-photo face is compared with every stored reference encoding.
+5. The identity belonging to the smallest face distance is selected only when the distance is at or below the existing 0.55 threshold.
+6. Results remain available for human review.
+
+The original offline processing, CPU-only operation, Windows support, and event-image resizing behaviour are preserved. This enhancement does not require a GPU, cloud service, external API, or internet connection.
+
+### Reference image validation
+
+- A reference image with no detectable face is skipped and logged.
+- A damaged or unreadable reference image is logged without stopping other images from being processed.
+- If multiple faces are detected in one reference image, a warning is logged and only the first detected face is used.
+- Logs include the anonymous identity label and relative reference path to support local investigation.
+- An invalid image for one identity does not prevent other valid images for that identity from being loaded.
+### Privacy and ethical safeguards
+
+- Keep all children's photos, reference photos, ground-truth files, benchmark inputs, and output folders on the local device.
+- Do not upload private face images or benchmark data to GitHub, cloud storage, or external APIs.
+- Use anonymous identity labels instead of real names.
+- Treat automated sorting as decision support rather than a final decision. A responsible adult should review unmatched and potentially incorrect results.
+- Restrict access to local logs because file paths and identity labels may still contain sensitive information.
+
+### Accuracy, fairness, and error risks
+
+Multiple reference photos may reduce false negatives when a person appears under different angles or lighting conditions. However, improvement is not guaranteed for every identity.
+
+Unequal reference coverage can create unfair performance differences. An identity with several clear and varied reference photos may be easier to recognise than an identity with only one low-quality image. Reference-photo quantity, image quality, pose, lighting, occlusion, and camera conditions should therefore be reviewed across identities.
+
+A false positive assigns a photo to the wrong identity and creates a privacy risk because a child's photo may be copied into another person's folder. A false negative leaves a valid identity unmatched and may cause photos to be missed. The matching threshold must not be relaxed without measuring both risks on the same benchmark dataset.
+
+Benchmark comparisons must use the same private images and ground truth before and after the enhancement. Report exact-match accuracy, unmatched cases, wrong-identity cases, processing time, CPU usage, RAM usage, and GPU usage. Private benchmark files must remain outside the public repository.
