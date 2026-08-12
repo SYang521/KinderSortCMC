@@ -1,9 +1,12 @@
 """Local reference encoding cache helpers for KinderSort."""
 
 import hashlib
+import json
 import os
 from pathlib import Path
 from typing import TypedDict
+
+import numpy as np
 
 APP_CACHE_DIRECTORY = "KinderSortLite"
 CACHE_DIRECTORY = "cache"
@@ -68,6 +71,148 @@ def is_cache_metadata_valid(
         and metadata.get("reference_manifest") == current_manifest
         and metadata.get("encoding_config") == current_encoding_config
     )
+
+
+def save_reference_cache(
+    metadata_path: Path,
+    encodings_path: Path,
+    metadata: CacheMetadata,
+    student_encodings: dict[str, list[np.ndarray]],
+) -> None:
+    """Save metadata and multiple reference encodings locally.
+
+    Student names are stored as Unicode arrays, and face encodings are stored
+    as a numeric matrix. No Python object arrays or pickle data are used.
+
+    Args:
+        metadata_path: Destination path for versioned JSON metadata.
+        encodings_path: Destination path for numerical NumPy data.
+        metadata: Validated cache metadata to save.
+        student_encodings: One or more face encodings for each student.
+
+    Raises:
+        ValueError: If no encodings exist or an encoding has an invalid shape.
+    """
+    names: list[str] = []
+    encoding_rows: list[np.ndarray] = []
+
+    for student_name in sorted(student_encodings):
+        for encoding in student_encodings[student_name]:
+            encoding_array = np.asarray(encoding, dtype=np.float64)
+            if encoding_array.shape != (128,):
+                raise ValueError(
+                    "Each reference encoding must contain 128 values."
+                )
+
+            if not np.all(np.isfinite(encoding_array)):
+                raise ValueError(
+                    "Reference encodings must contain only finite values."
+                )
+
+            names.append(student_name)
+            encoding_rows.append(encoding_array)
+
+    if not encoding_rows:
+        raise ValueError("Cannot save an empty reference encoding cache.")
+
+    metadata_path.parent.mkdir(parents=True, exist_ok=True)
+    encodings_path.parent.mkdir(parents=True, exist_ok=True)
+
+    metadata_path.write_text(
+        json.dumps(metadata, ensure_ascii=False, indent=2),
+        encoding="utf-8",
+    )
+
+    np.savez_compressed(
+        encodings_path,
+        student_names=np.asarray(names, dtype=np.str_),
+        encodings=np.vstack(encoding_rows),
+    )
+
+
+def load_reference_cache(
+    metadata_path: Path,
+    encodings_path: Path,
+    current_manifest: list[ReferenceManifestEntry],
+    current_encoding_config: dict[str, object],
+) -> dict[str, list[np.ndarray]] | None:
+    """Load and validate locally cached reference encodings.
+
+    Pickle loading is disabled. Missing, outdated, malformed, or corrupted
+    cache data is rejected so the caller can rebuild it safely.
+
+    Args:
+        metadata_path: Path to the versioned JSON metadata.
+        encodings_path: Path to the numerical NumPy cache.
+        current_manifest: Current reference photo file metadata.
+        current_encoding_config: Current face encoding parameters.
+
+    Returns:
+        Encodings grouped by student name, or None when the cache is invalid.
+    """
+    if not metadata_path.is_file() or not encodings_path.is_file():
+        return None
+
+    try:
+        metadata = json.loads(
+            metadata_path.read_text(encoding="utf-8")
+        )
+
+        if not is_cache_metadata_valid(
+            metadata,
+            current_manifest,
+            current_encoding_config,
+        ):
+            return None
+
+        with np.load(encodings_path, allow_pickle=False) as cache_data:
+            if set(cache_data.files) != {"student_names", "encodings"}:
+                return None
+
+            student_names = cache_data["student_names"]
+            encodings = cache_data["encodings"]
+
+        if student_names.ndim != 1:
+            return None
+
+        if student_names.dtype.kind not in {"U", "S"}:
+            return None
+
+        if encodings.ndim != 2 or encodings.shape[1] != 128:
+            return None
+
+        if len(student_names) != len(encodings):
+            return None
+
+        if len(student_names) == 0:
+            return None
+
+        if not np.issubdtype(encodings.dtype, np.number):
+            return None
+
+        if not np.all(np.isfinite(encodings)):
+            return None
+
+        loaded_encodings: dict[str, list[np.ndarray]] = {}
+
+        for student_name, encoding in zip(
+            student_names.tolist(),
+            encodings,
+            strict=True,
+        ):
+            name = str(student_name)
+
+            if not name:
+                return None
+
+            loaded_encodings.setdefault(name, []).append(
+                np.asarray(encoding, dtype=np.float64)
+            )
+
+        return loaded_encodings
+
+    except (OSError, ValueError, TypeError, json.JSONDecodeError):
+        return None
 
 
 def build_cache_paths(

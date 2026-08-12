@@ -4,12 +4,16 @@ import tempfile
 import unittest
 from pathlib import Path
 
+import numpy as np
+
 from reference_cache import (
     CACHE_SCHEMA_VERSION,
     build_cache_metadata,
     build_cache_paths,
     build_reference_manifest,
     is_cache_metadata_valid,
+    load_reference_cache,
+    save_reference_cache,
 )
 
 
@@ -262,6 +266,175 @@ class CacheMetadataTests(unittest.TestCase):
                         self.encoding_config,
                     )
                 )
+
+
+
+class CacheFileTests(unittest.TestCase):
+    """Verify safe local persistence of multiple reference encodings."""
+
+    def setUp(self) -> None:
+        self.manifest = [
+            {
+                "student_name": "Ali",
+                "relative_path": "Ali/front.jpg",
+                "size": 1234,
+                "modified_ns": 5678,
+            },
+            {
+                "student_name": "Ali",
+                "relative_path": "Ali/side.jpg",
+                "size": 2345,
+                "modified_ns": 6789,
+            },
+            {
+                "student_name": "Siti",
+                "relative_path": "Siti.jpg",
+                "size": 3456,
+                "modified_ns": 7890,
+            },
+        ]
+        self.encoding_config = {
+            "face_location_model": "cnn",
+            "num_jitters": 10,
+            "encoding_model": "large",
+            "encoding_dimension": 128,
+        }
+        self.student_encodings = {
+            "Ali": [
+                np.full(128, 0.1, dtype=np.float64),
+                np.full(128, 0.2, dtype=np.float64),
+            ],
+            "Siti": [
+                np.full(128, 0.3, dtype=np.float64),
+            ],
+        }
+
+    def test_save_and_load_multiple_reference_encodings(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            cache_folder = Path(temp_dir)
+            metadata_path = cache_folder / "metadata.json"
+            encodings_path = cache_folder / "encodings.npz"
+            metadata = build_cache_metadata(
+                self.manifest,
+                self.encoding_config,
+            )
+
+            save_reference_cache(
+                metadata_path,
+                encodings_path,
+                metadata,
+                self.student_encodings,
+            )
+            loaded_encodings = load_reference_cache(
+                metadata_path,
+                encodings_path,
+                self.manifest,
+                self.encoding_config,
+            )
+
+            self.assertIsNotNone(loaded_encodings)
+            self.assertEqual(
+                list(loaded_encodings),
+                ["Ali", "Siti"],
+            )
+            self.assertEqual(len(loaded_encodings["Ali"]), 2)
+            self.assertEqual(len(loaded_encodings["Siti"]), 1)
+            np.testing.assert_allclose(
+                loaded_encodings["Ali"][0],
+                self.student_encodings["Ali"][0],
+            )
+
+    def test_load_returns_none_for_missing_cache_files(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            cache_folder = Path(temp_dir)
+
+            loaded_encodings = load_reference_cache(
+                cache_folder / "metadata.json",
+                cache_folder / "encodings.npz",
+                self.manifest,
+                self.encoding_config,
+            )
+
+            self.assertIsNone(loaded_encodings)
+
+    def test_load_returns_none_for_corrupted_metadata(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            cache_folder = Path(temp_dir)
+            metadata_path = cache_folder / "metadata.json"
+            encodings_path = cache_folder / "encodings.npz"
+            metadata_path.write_text(
+                "{not valid json",
+                encoding="utf-8",
+            )
+            np.savez(
+                encodings_path,
+                student_names=np.array(["Ali"]),
+                encodings=np.zeros((1, 128), dtype=np.float64),
+            )
+
+            loaded_encodings = load_reference_cache(
+                metadata_path,
+                encodings_path,
+                self.manifest,
+                self.encoding_config,
+            )
+
+            self.assertIsNone(loaded_encodings)
+
+    def test_load_returns_none_for_invalid_encoding_shape(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            cache_folder = Path(temp_dir)
+            metadata_path = cache_folder / "metadata.json"
+            encodings_path = cache_folder / "encodings.npz"
+            metadata = build_cache_metadata(
+                self.manifest,
+                self.encoding_config,
+            )
+            metadata_path.write_text(
+                __import__("json").dumps(metadata),
+                encoding="utf-8",
+            )
+            np.savez(
+                encodings_path,
+                student_names=np.array(["Ali"]),
+                encodings=np.zeros((1, 64), dtype=np.float64),
+            )
+
+            loaded_encodings = load_reference_cache(
+                metadata_path,
+                encodings_path,
+                self.manifest,
+                self.encoding_config,
+            )
+
+            self.assertIsNone(loaded_encodings)
+
+
+    def test_saved_cache_uses_only_non_object_arrays(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            cache_folder = Path(temp_dir)
+            metadata_path = cache_folder / "metadata.json"
+            encodings_path = cache_folder / "encodings.npz"
+            metadata = build_cache_metadata(
+                self.manifest,
+                self.encoding_config,
+            )
+
+            save_reference_cache(
+                metadata_path,
+                encodings_path,
+                metadata,
+                self.student_encodings,
+            )
+
+            with np.load(encodings_path, allow_pickle=False) as cache_data:
+                student_names = cache_data["student_names"]
+                encodings = cache_data["encodings"]
+
+                self.assertNotEqual(student_names.dtype.kind, "O")
+                self.assertNotEqual(encodings.dtype.kind, "O")
+                self.assertEqual(encodings.dtype, np.float64)
+                self.assertEqual(encodings.shape, (3, 128))
 
 
 if __name__ == "__main__":
