@@ -4,7 +4,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from reference_cache import build_reference_manifest
+from reference_cache import build_cache_paths, build_reference_manifest
 
 
 class ReferenceManifestTests(unittest.TestCase):
@@ -60,6 +60,7 @@ class ReferenceManifestTests(unittest.TestCase):
             )
 
             self.assertNotEqual(original_manifest, modified_manifest)
+
     def test_manifest_rejects_image_outside_reference_folder(self) -> None:
         with tempfile.TemporaryDirectory() as reference_dir:
             with tempfile.TemporaryDirectory() as outside_dir:
@@ -75,6 +76,77 @@ class ReferenceManifestTests(unittest.TestCase):
                         reference_folder,
                         [("Outside", outside_photo)],
                     )
+
+
+class CachePathTests(unittest.TestCase):
+    """Verify privacy-friendly per-folder cache paths."""
+
+    def test_cache_path_uses_local_app_data_without_exposing_folder_name(
+        self,
+    ) -> None:
+        with tempfile.TemporaryDirectory() as local_app_data:
+            reference_folder = Path(local_app_data) / "Private Class Names"
+            reference_folder.mkdir()
+
+            metadata_path, encodings_path = build_cache_paths(
+                reference_folder,
+                Path(local_app_data),
+            )
+
+            expected_root = (
+                Path(local_app_data)
+                / "KinderSortLite"
+                / "cache"
+            )
+
+            self.assertEqual(metadata_path.parent, encodings_path.parent)
+            self.assertEqual(metadata_path.parent.parent, expected_root)
+            self.assertEqual(metadata_path.name, "metadata.json")
+            self.assertEqual(encodings_path.name, "encodings.npz")
+            self.assertNotIn(
+                "Private Class Names",
+                str(metadata_path),
+            )
+
+    def test_cache_path_is_stable_for_same_reference_folder(self) -> None:
+        with tempfile.TemporaryDirectory() as local_app_data:
+            reference_folder = Path(local_app_data) / "References"
+            reference_folder.mkdir()
+
+            first_paths = build_cache_paths(
+                reference_folder,
+                Path(local_app_data),
+            )
+            second_paths = build_cache_paths(
+                reference_folder,
+                Path(local_app_data),
+            )
+
+            self.assertEqual(first_paths, second_paths)
+
+    def test_different_reference_folders_use_different_cache_paths(
+        self,
+    ) -> None:
+        with tempfile.TemporaryDirectory() as local_app_data:
+            first_folder = Path(local_app_data) / "Class A"
+            second_folder = Path(local_app_data) / "Class B"
+            first_folder.mkdir()
+            second_folder.mkdir()
+
+            first_paths = build_cache_paths(
+                first_folder,
+                Path(local_app_data),
+            )
+            second_paths = build_cache_paths(
+                second_folder,
+                Path(local_app_data),
+            )
+
+            self.assertNotEqual(
+                first_paths[0].parent,
+                second_paths[0].parent,
+            )
+
 
 if __name__ == "__main__":
     unittest.main()

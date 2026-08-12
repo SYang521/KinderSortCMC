@@ -1,7 +1,14 @@
 """Local reference encoding cache helpers for KinderSort."""
 
+import hashlib
+import os
 from pathlib import Path
 from typing import TypedDict
+
+APP_CACHE_DIRECTORY = "KinderSortLite"
+CACHE_DIRECTORY = "cache"
+METADATA_FILENAME = "metadata.json"
+ENCODINGS_FILENAME = "encodings.npz"
 
 
 class ReferenceManifestEntry(TypedDict):
@@ -11,6 +18,43 @@ class ReferenceManifestEntry(TypedDict):
     relative_path: str
     size: int
     modified_ns: int
+
+
+def build_cache_paths(
+    reference_folder: Path,
+    local_app_data: Path,
+) -> tuple[Path, Path]:
+    """Build stable local cache paths without exposing the folder name.
+
+    The reference folder path is normalized and hashed so different reference
+    folders receive separate cache locations. The function only calculates
+    paths and does not create directories or files.
+
+    Args:
+        reference_folder: Root folder selected for reference photos.
+        local_app_data: Windows local application data directory.
+
+    Returns:
+        Paths for the cache metadata and numerical face encodings.
+    """
+    normalized_reference_path = os.path.normcase(
+        str(reference_folder.resolve())
+    )
+    reference_id = hashlib.sha256(
+        normalized_reference_path.encode("utf-8")
+    ).hexdigest()[:24]
+
+    cache_folder = (
+        local_app_data
+        / APP_CACHE_DIRECTORY
+        / CACHE_DIRECTORY
+        / reference_id
+    )
+
+    return (
+        cache_folder / METADATA_FILENAME,
+        cache_folder / ENCODINGS_FILENAME,
+    )
 
 
 def build_reference_manifest(
