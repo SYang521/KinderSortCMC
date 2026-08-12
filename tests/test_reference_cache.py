@@ -4,7 +4,13 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from reference_cache import build_cache_paths, build_reference_manifest
+from reference_cache import (
+    CACHE_SCHEMA_VERSION,
+    build_cache_metadata,
+    build_cache_paths,
+    build_reference_manifest,
+    is_cache_metadata_valid,
+)
 
 
 class ReferenceManifestTests(unittest.TestCase):
@@ -146,6 +152,116 @@ class CachePathTests(unittest.TestCase):
                 first_paths[0].parent,
                 second_paths[0].parent,
             )
+
+
+class CacheMetadataTests(unittest.TestCase):
+    """Verify cache version, manifest, and encoding configuration."""
+
+    def setUp(self) -> None:
+        self.manifest = [
+            {
+                "student_name": "Ali",
+                "relative_path": "Ali/front.jpg",
+                "size": 1234,
+                "modified_ns": 5678,
+            }
+        ]
+        self.encoding_config = {
+            "face_location_model": "cnn",
+            "num_jitters": 10,
+            "encoding_model": "large",
+            "encoding_dimension": 128,
+        }
+
+    def test_metadata_is_valid_for_matching_inputs(self) -> None:
+        metadata = build_cache_metadata(
+            self.manifest,
+            self.encoding_config,
+        )
+
+        self.assertEqual(
+            metadata["schema_version"],
+            CACHE_SCHEMA_VERSION,
+        )
+        self.assertTrue(
+            is_cache_metadata_valid(
+                metadata,
+                self.manifest,
+                self.encoding_config,
+            )
+        )
+
+    def test_metadata_is_invalid_after_reference_change(self) -> None:
+        metadata = build_cache_metadata(
+            self.manifest,
+            self.encoding_config,
+        )
+        changed_manifest = [
+            {
+                **self.manifest[0],
+                "size": 9999,
+            }
+        ]
+
+        self.assertFalse(
+            is_cache_metadata_valid(
+                metadata,
+                changed_manifest,
+                self.encoding_config,
+            )
+        )
+
+    def test_metadata_is_invalid_for_different_encoding_config(self) -> None:
+        metadata = build_cache_metadata(
+            self.manifest,
+            self.encoding_config,
+        )
+        changed_config = {
+            **self.encoding_config,
+            "num_jitters": 5,
+        }
+
+        self.assertFalse(
+            is_cache_metadata_valid(
+                metadata,
+                self.manifest,
+                changed_config,
+            )
+        )
+
+    def test_metadata_is_invalid_for_unsupported_schema_version(self) -> None:
+        metadata = build_cache_metadata(
+            self.manifest,
+            self.encoding_config,
+        )
+        metadata["schema_version"] = CACHE_SCHEMA_VERSION + 1
+
+        self.assertFalse(
+            is_cache_metadata_valid(
+                metadata,
+                self.manifest,
+                self.encoding_config,
+            )
+        )
+
+    def test_malformed_metadata_is_invalid(self) -> None:
+        malformed_values = [
+            None,
+            "invalid metadata",
+            [],
+            {},
+            {"schema_version": CACHE_SCHEMA_VERSION},
+        ]
+
+        for metadata in malformed_values:
+            with self.subTest(metadata=metadata):
+                self.assertFalse(
+                    is_cache_metadata_valid(
+                        metadata,
+                        self.manifest,
+                        self.encoding_config,
+                    )
+                )
 
 
 if __name__ == "__main__":

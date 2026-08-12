@@ -9,6 +9,7 @@ APP_CACHE_DIRECTORY = "KinderSortLite"
 CACHE_DIRECTORY = "cache"
 METADATA_FILENAME = "metadata.json"
 ENCODINGS_FILENAME = "encodings.npz"
+CACHE_SCHEMA_VERSION = 1
 
 
 class ReferenceManifestEntry(TypedDict):
@@ -18,6 +19,55 @@ class ReferenceManifestEntry(TypedDict):
     relative_path: str
     size: int
     modified_ns: int
+
+
+class CacheMetadata(TypedDict):
+    """Versioned metadata used to validate a local encoding cache."""
+
+    schema_version: int
+    reference_manifest: list[ReferenceManifestEntry]
+    encoding_config: dict[str, object]
+
+
+def build_cache_metadata(
+    reference_manifest: list[ReferenceManifestEntry],
+    encoding_config: dict[str, object],
+) -> CacheMetadata:
+    """Build versioned metadata for a reference encoding cache.
+
+    Args:
+        reference_manifest: Current reference photo file metadata.
+        encoding_config: Face encoding parameters that affect cache contents.
+
+    Returns:
+        Metadata that can later be validated before loading encodings.
+    """
+    return {
+        "schema_version": CACHE_SCHEMA_VERSION,
+        "reference_manifest": reference_manifest,
+        "encoding_config": encoding_config,
+    }
+
+
+def is_cache_metadata_valid(
+    metadata: object,
+    current_manifest: list[ReferenceManifestEntry],
+    current_encoding_config: dict[str, object],
+) -> bool:
+    """Return whether cache metadata matches the current inputs.
+
+    Invalid, incomplete, outdated, or differently configured metadata is
+    rejected so the caller can rebuild the cache instead of using stale face
+    encodings.
+    """
+    if not isinstance(metadata, dict):
+        return False
+
+    return (
+        metadata.get("schema_version") == CACHE_SCHEMA_VERSION
+        and metadata.get("reference_manifest") == current_manifest
+        and metadata.get("encoding_config") == current_encoding_config
+    )
 
 
 def build_cache_paths(
