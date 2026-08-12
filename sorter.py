@@ -49,11 +49,27 @@ class PhotoSorter:
         self.events_folder = events_folder
         self.output_folder = output_folder
         self.logger = logger
-        self._student_encodings: dict[str, np.ndarray] = {}
+        self._student_encodings: dict[str, list[np.ndarray]] = {}
 
     # ------------------------------------------------------------------
     # Reference loading
     # ------------------------------------------------------------------
+
+    def _collect_reference_images(self) -> list[tuple[str, Path]]:
+        """Collect reference images from legacy files and student folders."""
+        reference_images: list[tuple[str, Path]] = []
+
+        for item in sorted(self.reference_folder.iterdir()):
+            if item.is_file() and is_image_file(item):
+                reference_images.append((item.stem, item))
+                continue
+
+            if item.is_dir():
+                for image_path in sorted(item.iterdir()):
+                    if image_path.is_file() and is_image_file(image_path):
+                        reference_images.append((item.name, image_path))
+
+        return reference_images
 
     def load_references(
         self,
@@ -73,18 +89,16 @@ class PhotoSorter:
             Callers should show a warning for each name in this list.
         """
         no_face_names: list[str] = []
-
-        reference_images = sorted(
-            p for p in self.reference_folder.iterdir() if is_image_file(p)
-        )
+        reference_images = self._collect_reference_images()
 
         if not reference_images:
             self.logger.warning("No reference images found in %s", self.reference_folder)
             return no_face_names
 
         total = len(reference_images)
-        for current, ref_path in enumerate(reference_images, start=1):
-            student_name = ref_path.stem
+        for current, (student_name, ref_path) in enumerate(
+            reference_images, start=1
+        ):
             if progress_callback:
                 progress_callback(current, total, student_name)
             try:
@@ -98,23 +112,31 @@ class PhotoSorter:
                     self.logger.warning(
                         "No face detected in reference photo for %s (%s)",
                         student_name,
-                        ref_path.name,
+                        ref_path.relative_to(self.reference_folder),
                     )
                     no_face_names.append(student_name)
                     continue
 
                 if len(encodings) > 1:
                     self.logger.warning(
-                        "Multiple faces in reference photo for %s — using first face only",
+                        "Multiple faces in reference photo for %s (%s) – using first face only",
                         student_name,
+                        ref_path.relative_to(self.reference_folder),
                     )
 
-                self._student_encodings[student_name] = encodings[0]
-                self.logger.info("Loaded reference for %s", student_name)
+                self._student_encodings.setdefault(student_name, []).append(encodings[0])
+                self.logger.info(
+                    "Loaded reference for %s from %s",
+                    student_name,
+                    ref_path.relative_to(self.reference_folder),
+                )
 
             except Exception as exc:  # noqa: BLE001
                 self.logger.error(
-                    "Could not read reference photo %s: %s", ref_path.name, exc
+                    "Could not read reference photo for %s (%s): %s",
+                    student_name,
+                    ref_path.relative_to(self.reference_folder),
+                    exc,
                 )
 
         self.logger.info(
@@ -260,10 +282,18 @@ class PhotoSorter:
         if not self._student_encodings:
             return None
 
-        names = list(self._student_encodings.keys())
-        known_encodings = np.array(list(self._student_encodings.values()))
+        names = []
+        known_encodings = []
 
-        distances = face_recognition.face_distance(known_encodings, encoding)
+        for student_name, student_encodings in self._student_encodings.items():
+            names.extend([student_name] * len(student_encodings))
+            known_encodings.extend(student_encodings)
+
+        known_encodings_array = np.array(known_encodings)
+
+        distances = face_recognition.face_distance(
+            known_encodings_array, encoding
+        )
         best_idx = int(np.argmin(distances))
         best_distance = distances[best_idx]
 
