@@ -215,6 +215,37 @@ def load_reference_cache(
         return None
 
 
+def clear_reference_cache(
+    metadata_path: Path,
+    encodings_path: Path,
+) -> bool:
+    """Delete the local cache files without touching reference photos.
+
+    Only the supplied metadata and encoding files are removed. Reference,
+    event, and output photos are never deleted.
+
+    Args:
+        metadata_path: Path to the cache metadata JSON file.
+        encodings_path: Path to the numerical encoding cache file.
+
+    Returns:
+        True if at least one cache file existed and was deleted.
+        False if neither cache file existed.
+
+    Raises:
+        OSError: If an existing cache file cannot be deleted.
+    """
+    cache_existed = False
+
+    for cache_path in (metadata_path, encodings_path):
+        if cache_path.is_file():
+            cache_path.unlink()
+            cache_existed = True
+
+    return cache_existed
+
+
+
 def build_cache_paths(
     reference_folder: Path,
     local_app_data: Path,

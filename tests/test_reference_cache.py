@@ -14,6 +14,7 @@ from reference_cache import (
     is_cache_metadata_valid,
     load_reference_cache,
     save_reference_cache,
+    clear_reference_cache,
 )
 
 
@@ -435,6 +436,39 @@ class CacheFileTests(unittest.TestCase):
                 self.assertNotEqual(encodings.dtype.kind, "O")
                 self.assertEqual(encodings.dtype, np.float64)
                 self.assertEqual(encodings.shape, (3, 128))
+
+
+    def test_clear_cache_deletes_only_cache_files(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temp_root = Path(temp_dir)
+            metadata_path = temp_root / "metadata.json"
+            encodings_path = temp_root / "encodings.npz"
+            reference_photo = temp_root / "Ali.jpg"
+
+            metadata_path.write_text("{}", encoding="utf-8")
+            encodings_path.write_bytes(b"cache-data")
+            reference_photo.write_bytes(b"reference-photo")
+
+            cache_deleted = clear_reference_cache(
+                metadata_path,
+                encodings_path,
+            )
+
+            self.assertTrue(cache_deleted)
+            self.assertFalse(metadata_path.exists())
+            self.assertFalse(encodings_path.exists())
+            self.assertTrue(reference_photo.is_file())
+
+    def test_clear_cache_returns_false_when_cache_is_missing(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temp_root = Path(temp_dir)
+
+            cache_deleted = clear_reference_cache(
+                temp_root / "metadata.json",
+                temp_root / "encodings.npz",
+            )
+
+            self.assertFalse(cache_deleted)
 
 
 if __name__ == "__main__":
