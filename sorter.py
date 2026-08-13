@@ -6,12 +6,21 @@ output folders.  All processing is CPU-only (no GPU required).
 """
 
 import logging
+import os
 from collections.abc import Callable
 from pathlib import Path
 
 import face_recognition
 import numpy as np
 from PIL import Image, UnidentifiedImageError
+
+from reference_cache import (
+    build_cache_metadata,
+    build_cache_paths,
+    build_reference_manifest,
+    load_reference_cache,
+    save_reference_cache,
+)
 
 from utils import (
     build_output_filename,
@@ -36,6 +45,34 @@ class PhotoSorter:
 
     MAX_IMAGE_DIMENSION = 1000
     """Longest side in pixels after resizing for face detection (performance)."""
+    REFERENCE_FACE_LOCATION_MODEL = "cnn"
+    REFERENCE_NUM_JITTERS = 10
+    REFERENCE_ENCODING_MODEL = "large"
+    ENCODING_DIMENSION = 128
+
+    def _reference_encoding_config(self) -> dict[str, object]:
+        """Return parameters that determine reference encoding contents."""
+        return {
+            "face_location_model": self.REFERENCE_FACE_LOCATION_MODEL,
+            "num_jitters": self.REFERENCE_NUM_JITTERS,
+            "encoding_model": self.REFERENCE_ENCODING_MODEL,
+            "encoding_dimension": self.ENCODING_DIMENSION,
+        }
+
+    def _cache_paths(self) -> tuple[Path, Path] | None:
+        """Return local cache paths, or None if LOCALAPPDATA is unavailable."""
+        local_app_data = os.environ.get("LOCALAPPDATA")
+
+        if not local_app_data:
+            self.logger.warning(
+                "LOCALAPPDATA is unavailable; reference cache is disabled."
+            )
+            return None
+
+        return build_cache_paths(
+            self.reference_folder,
+            Path(local_app_data),
+        )
 
     def __init__(
         self,
@@ -91,6 +128,30 @@ class PhotoSorter:
         no_face_names: list[str] = []
         reference_images = self._collect_reference_images()
 
+        reference_manifest = build_reference_manifest(
+            self.reference_folder,
+            reference_images,
+        )
+        encoding_config = self._reference_encoding_config()
+        cache_paths = self._cache_paths()
+
+        if cache_paths is not None:
+            metadata_path, encodings_path = cache_paths
+            cached_encodings = load_reference_cache(
+                metadata_path,
+                encodings_path,
+                reference_manifest,
+                encoding_config,
+            )
+
+            if cached_encodings is not None:
+                self._student_encodings = cached_encodings
+                self.logger.info(
+                    "Loaded %d student reference(s) from local cache",
+                    len(self._student_encodings),
+                )
+                return no_face_names
+
         if not reference_images:
             self.logger.warning("No reference images found in %s", self.reference_folder)
             return no_face_names
@@ -103,9 +164,15 @@ class PhotoSorter:
                 progress_callback(current, total, student_name)
             try:
                 image = face_recognition.load_image_file(str(ref_path))
-                locations = face_recognition.face_locations(image, model="cnn")
+                locations = face_recognition.face_locations(
+                    image,
+                    model=self.REFERENCE_FACE_LOCATION_MODEL,
+                )
                 encodings = face_recognition.face_encodings(
-                    image, known_face_locations=locations, num_jitters=10, model="large"
+                    image,
+                    known_face_locations=locations,
+                    num_jitters=self.REFERENCE_NUM_JITTERS,
+                    model=self.REFERENCE_ENCODING_MODEL,
                 )
 
                 if not encodings:
@@ -142,6 +209,30 @@ class PhotoSorter:
         self.logger.info(
             "Loaded %d student reference(s)", len(self._student_encodings)
         )
+
+        if cache_paths is not None and self._student_encodings:
+            metadata_path, encodings_path = cache_paths
+            cache_metadata = build_cache_metadata(
+                reference_manifest,
+                encoding_config,
+            )
+
+            try:
+                save_reference_cache(
+                    metadata_path,
+                    encodings_path,
+                    cache_metadata,
+                    self._student_encodings,
+                )
+                self.logger.info(
+                    "Saved reference encodings to local cache."
+                )
+            except (OSError, TypeError, ValueError) as exc:
+                self.logger.warning(
+                    "Could not save reference encoding cache: %s",
+                    exc,
+                )
+
         return no_face_names
 
     # ------------------------------------------------------------------

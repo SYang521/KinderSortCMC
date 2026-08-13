@@ -5,12 +5,14 @@ Single-window tkinter application that drives the PhotoSorter pipeline with a
 background thread so the UI remains responsive during processing.
 """
 
+import os
 import threading
 import time
 import tkinter as tk
 from pathlib import Path
 from tkinter import filedialog, messagebox, ttk
 
+from reference_cache import build_cache_paths, clear_reference_cache
 from sorter import PhotoSorter
 from utils import setup_logger
 
@@ -98,6 +100,17 @@ class KinderSortApp(tk.Tk):
             command=self._on_cancel,
         )
         self._cancel_btn.pack(side=tk.LEFT)
+
+        self._clear_cache_btn = tk.Button(
+            btn_frame,
+            text="Clear Reference Cache",
+            font=("Helvetica", 11),
+            padx=12,
+            pady=8,
+            command=self._on_clear_cache,
+        )
+        self._clear_cache_btn.pack(side=tk.LEFT, padx=(8, 0))
+
 
         # Progress section
         self._build_progress_section(root_frame)
@@ -297,6 +310,80 @@ class KinderSortApp(tk.Tk):
         self._cancel_flag.set()
         self._cancel_btn.config(state=tk.DISABLED)
         self._set_status("Cancelling… (finishing current image)")
+
+
+    def _on_clear_cache(self) -> None:
+        """Clear the selected reference folder's local encoding cache."""
+        reference_folder = self._reference_var.get().strip()
+
+        if not reference_folder:
+            messagebox.showerror(
+                "Reference folder required",
+                "Please select the Reference Photos folder first.",
+            )
+            return
+
+        reference_path = Path(reference_folder)
+
+        if not reference_path.is_dir():
+            messagebox.showerror(
+                "Invalid reference folder",
+                f"Reference folder does not exist:\n{reference_path}",
+            )
+            return
+
+        local_app_data = os.environ.get("LOCALAPPDATA")
+
+        if not local_app_data:
+            messagebox.showerror(
+                "Cache unavailable",
+                "Windows local application data is unavailable.",
+            )
+            return
+
+        should_clear = messagebox.askyesno(
+            "Clear Reference Cache",
+            "Reference face encodings are sensitive biometric data.\n\n"
+            "KinderSort stores this cache only on this device and does not "
+            "upload it to the cloud.\n\n"
+            "Clear the local cache for the selected Reference folder?\n"
+            "Original reference photos will not be deleted.",
+        )
+
+        if not should_clear:
+            return
+
+        metadata_path, encodings_path = build_cache_paths(
+            reference_path,
+            Path(local_app_data),
+        )
+
+        try:
+            cache_deleted = clear_reference_cache(
+                metadata_path,
+                encodings_path,
+            )
+        except OSError as exc:
+            messagebox.showerror(
+                "Cache deletion failed",
+                f"Could not clear the local reference cache:\n{exc}",
+            )
+            return
+
+        if cache_deleted:
+            messagebox.showinfo(
+                "Cache cleared",
+                "The local reference encoding cache was cleared.\n\n"
+                "Original reference photos were not deleted. KinderSort will "
+                "rebuild the cache the next time sorting starts.",
+            )
+        else:
+            messagebox.showinfo(
+                "No cache found",
+                "No local reference encoding cache exists for the selected "
+                "Reference folder.",
+            )
+
 
     # ------------------------------------------------------------------
     # Cross-thread callbacks (all scheduled via after() from worker)
