@@ -116,14 +116,14 @@ Description: Offline CPU-only student photo organiser
 The tested Installer size was:
 
 ```text
-113,616,879 bytes
+113,612,199 bytes
 Approximately 108.35 MB
 ```
 
 SHA-256:
 
 ```text
-B33C0E555D54DFEA18E9B5940BA0581A410351A676B866AF90A9B4EEA51DD64E
+0F3371B6F8BF2C0FCC6D2723E2F3A2FEB2389E47EF6B0C95C25F39A529E15E01
 ```
 
 The SHA-256 value applies only to the specific tested build. Rebuilding the
